@@ -1,0 +1,108 @@
+올려주신 7개의 데이터셋은 제약/바이오 임상시험 데이터의 국제 표준인 **CDISC ADaM(Analysis Data Model)** 표준을 따르고 있는 것으로 보입니다. 이 데이터들은 대장암(Colorectal Cancer) 치료제(예: Panitumumab 등)의 효능과 안전성을 평가하기 위한 매우 체계적인 구조를 갖추고 있습니다.
+
+각 데이터의 의미와 관계, 그리고 분석을 위한 핵심 연결고리를 정리해 드리겠습니다.
+
+---
+
+### 1. 데이터셋별 상세 설명
+
+| 데이터셋 파일명 | 이름 (Full Name) | 설명 | 핵심 분석 포인트 |
+| :--- | :--- | :--- | :--- |
+| **ADSL** | Subject Level Analysis | **모든 분석의 기준이 되는 마스터 테이블.** 환자의 인구통계학적 특성(나이, 성별), 치료군(TRT), 병기 정보를 담고 있습니다. | 치료군별 생존율(DTHX), 무진행 생존기간(PFSDY) 분석의 기준 |
+| **ADAE** | Adverse Events | **이상반응(부작용) 데이터.** 환자가 겪은 발진(Rash), 피부 건조 등의 부작용과 그 심각도(AESEVCD)가 기록되어 있습니다. | 약물의 안전성(Safety) 및 독성 평가 |
+| **ADLB** | Laboratory Analysis | **혈액 검사 결과.** 알부민, 헤모글로빈, 백혈구 수치 등 임상 병리 검사 결과가 방문 시점(VISIT)별로 기록되어 있습니다. | 환자의 신체 기능 변화 및 약물 반응 모니터링 |
+| **ADLS** | Lesion Measurement | **종양(병변) 측정 데이터.** CT/MRI를 통해 측정한 종양의 크기(LSLD)를 기록합니다. | 종양이 실제로 얼마나 줄어들었는지 수치로 확인 |
+| **ADRSP** | Response Analysis | **치료 반응 평가.** 종양 크기 변화를 바탕으로 의사가 판단한 결과(PD: 진행, SD: 유지, PR: 부분반응 등)가 담겨 있습니다. | 약물의 효능(Efficacy) 판단의 핵심 지표 |
+| **ADPM** | Physical Measurement | **신체 측정 데이터.** 주로 체중(WEIGHT)의 변화를 방문 시점별로 기록합니다. | 항암 치료 중 환자의 영양 상태 및 전신 상태 변화 확인 |
+| **BIOMARK** | Biomarker | **바이오마커 정보.** KRAS, NRAS, BRAF 등 특정 유전자 변이 여부를 기록합니다. | 특정 유전자 변이 유무에 따른 약물 효과 차이 분석 (매우 중요) |
+
+---
+
+### 2. 데이터 간의 관계 (Relationship)
+
+이 데이터셋들은 **`SUBJID` (환자 고유 번호)**를 중심으로 거미줄처럼 연결되어 있습니다.
+
+1.  **효능 분석 (Efficacy Chain):**
+    *   `BIOMARK`에서 유전자 변이 확인 → `ADSL`의 치료군과 연결 → `ADLS`에서 종양 크기 변화 확인 → `ADRSP`에서 최종 치료 반응 확정.
+2.  **안전성 분석 (Safety Chain):**
+    *   `ADSL`의 환자가 치료 시작 후 → `ADAE`에서 어떤 부작용이 생겼는지, `ADLB`와 `ADPM`에서 혈액 수치와 체중이 어떻게 변했는지 비교.
+
+---
+
+### 3. PK/FK 및 핵심 Key 정의
+
+데이터를 결합(Join)할 때 사용할 키값들입니다.
+
+*   **Primary Key (PK):** 각 테이블에서 레코드를 유일하게 식별하는 값
+    *   `ADSL`: `SUBJID`
+    *   기타 테이블: `SUBJID` + `VISITDY` (또는 `VISIT`) + `검사항목/이상반응명`
+*   **Foreign Key (FK):** 타 테이블과 연결할 때 사용하는 값
+    *   모든 테이블의 `SUBJID`는 `ADSL`의 `SUBJID`를 참조합니다.
+
+---
+
+### 4. 데이터 관계 도식화 (Diagram)
+
+아래 다이어그램은 `ADSL`을 중심으로 각 분석 데이터가 어떻게 연결되는지 보여줍니다.
+
+```mermaid
+erDiagram
+    ADSL ||--o{ ADAE : "Experiences (Safety)"
+    ADSL ||--o{ ADLB : "Tested (Lab Results)"
+    ADSL ||--o{ ADPM : "Measured (Weight)"
+    ADSL ||--o{ ADLS : "Scanned (Tumor Size)"
+    ADSL ||--o{ ADRSP : "Evaluated (Response)"
+    ADSL ||--|| BIOMARK : "Has Status (Genetics)"
+
+    ADLS ||--o{ ADRSP : "Provides data for"
+
+    ADSL {
+        string SUBJID PK "환자 고유번호"
+        string TRT "치료군 (Panit. vs BSC)"
+        int AGE "나이"
+        string SEX "성별"
+        int DTHX "사망 여부"
+    }
+
+    BIOMARK {
+        string SUBJID FK "환자 고유번호"
+        string BMMTR1 "KRAS 변이 여부"
+        string BMMTR7 "BRAF 변이 여부"
+    }
+
+    ADLS {
+        string SUBJID FK "환자 고유번호"
+        int VISITDY "방문 일자"
+        float LSLD "종양 장경 (크기)"
+        string LSSITE "발생 부위 (Liver, Lung 등)"
+    }
+
+    ADRSP {
+        string SUBJID FK "환자 고유번호"
+        string RSRESP "치료 반응 (PD, SD, PR, CR)"
+        int VISITDY "평가 일자"
+    }
+
+    ADAE {
+        string SUBJID FK "환자 고유번호"
+        string AEPT "이상반응 용어"
+        int AESEVCD "심각도 (1:경증, 3:중증)"
+    }
+
+    ADLB {
+        string SUBJID FK "환자 고유번호"
+        string LBTEST "검사 항목명"
+        float LBSTRESN "검사 결과 수치"
+    }
+```
+
+---
+
+### 5. 분석가를 위한 가이드 (Next Step)
+
+이 데이터를 분석할 때 제안하는 첫 번째 단계는 다음과 같습니다.
+
+1.  **BIOMARK 분석:** 유전자 변이(특히 KRAS Wild-type vs Mutant)에 따라 그룹을 나누십시오. 대장암 항암제는 유전자 변이 여부에 따라 효과가 극명하게 갈리는 경우가 많습니다.
+2.  **폭포수 그래프 (Waterfall Plot):** `ADLS` 데이터를 활용해 치료 전 대비 종양 크기의 최대 감소율을 시각화하십시오. 항암제 효능 분석의 꽃입니다.
+3.  **생존 분석 (Kaplan-Meier):** `ADSL`의 `PFSDYCR` (무진행 생존 기간)을 활용해 두 치료군 간의 생존율 곡선을 그리십시오.
+4.  **부작용 상관관계:** `ADAE`에서 피부 관련 부작용(Rash)이 나타난 환자들이 오히려 치료 반응(`ADRSP`)이 좋지는 않은지 확인해 보십시오. (특정 항암제는 피부 독성이 효능의 지표가 되기도 합니다.)
